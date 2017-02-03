@@ -4,13 +4,12 @@
 
 import java.net.InetSocketAddress
 
-import Judge.Disconnected
+import Judge.{Disconnected, IncompleteGame}
 import ParserError._
 import PlayerHandler._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.Tcp
 import akka.util.ByteString
-import cats.Show
 import cats.Show.ops._
 
 class PlayerHandler(id: Int, address: InetSocketAddress, judge: ActorRef) extends Actor with ActorLogging {
@@ -20,7 +19,7 @@ class PlayerHandler(id: Int, address: InetSocketAddress, judge: ActorRef) extend
       case Right(Ready) =>  sender() ! Tcp.Write(ByteString(s"You are player number ${id}\n"))
 
       case Left(error)  =>  {
-        log.debug(error.toString)
+        log.debug(error.show)
         sender() ! Tcp.Write(ByteString(error.show))
       }
     }
@@ -29,7 +28,11 @@ class PlayerHandler(id: Int, address: InetSocketAddress, judge: ActorRef) extend
       judge ! Disconnected(id, address)
     }
 
-    case x  => log.debug(x.toString)
+    case Tcp.ErrorClosed(cause) => {
+      log.debug(cause)
+
+      judge ! IncompleteGame
+    }
   }
 }
 
@@ -38,30 +41,4 @@ object PlayerHandler {
   def props(id: Int, address: InetSocketAddress, judge: ActorRef): Props = Props(new PlayerHandler(id, address, judge))
 
   def toCommand(input: String): Either[ParserError, PlayerCommand] = PlayerCommand.parseCommand(input)
-}
-
-sealed trait ParserError
-case class InvalidInput(input: String) extends ParserError
-
-object ParserError {
-
-  implicit def toShowable: Show[ParserError] = Show.show[ParserError] {
-    case InvalidInput(input) => s"Invalid Input: $input"
-  }
-}
-
-sealed trait PlayerCommand
-
-case object Ready extends PlayerCommand
-object PlayerCommand {
-
-  def parseCommand(txt: String): Either[ParserError, PlayerCommand] = txt match {
-    case "ready"  =>  Right(Ready)
-    case _        =>  Left(InvalidInput(txt))
-  }
-
-  implicit def toShowable: Show[PlayerCommand] = Show.show[PlayerCommand] {
-    case Ready  =>  "ready"
-  }
-
 }

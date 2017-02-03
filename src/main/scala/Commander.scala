@@ -9,7 +9,7 @@ import Judge.GetReady
 import akka.actor.{Actor, ActorLogging, Props}
 
 
-class Commander(endpoint: InetSocketAddress) extends Actor with ActorLogging{
+class Commander(endpoint: InetSocketAddress) extends Actor with ActorLogging {
 
   val judge = context.actorOf(Judge.props(self), name = "judge")
 
