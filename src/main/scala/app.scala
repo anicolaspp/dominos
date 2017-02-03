@@ -10,7 +10,7 @@ object app {
   def main(args: Array[String]): Unit = {
     val system = ActorSystem("echo-server")
 
-    val commander = system.actorOf(Commander.props(args(0).toInt))
+    val commander = system.actorOf(Commander.props(args(0).toInt), name = "commander")
     commander ! Commander.StartGameSession
 
     scala.io.StdIn.readLine()

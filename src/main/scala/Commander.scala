@@ -5,8 +5,8 @@
 import java.net.InetSocketAddress
 
 import Commander.{GameOver, StartGameSession}
-import Judge.{Add, Start}
-import akka.actor.{Actor, ActorLogging, Props}
+import Judge.{Add, GetReady, Start}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.{IO, Tcp}
 import akka.util.ByteString
 
@@ -15,32 +15,12 @@ import scala.collection.mutable.ListBuffer
 
 class Commander(endpoint: InetSocketAddress) extends Actor with ActorLogging{
 
-  val judge = context.actorOf(Props[Judge])
+  val judge = context.actorOf(Judge.props(self), name = "judge")
 
   override def receive: Receive = {
-
-    case StartGameSession         =>  IO(Tcp)(context.system) ! Tcp.Bind(self, endpoint)
-    case Tcp.Bound(localAddress)  =>  {
-      log.debug(s"judge running on $localAddress")
-
-      context.become(waitingForPlayers(4, List.empty[InetSocketAddress]))
-    }
-  }
-
-  def waitingForPlayers(numberOfPlayers: Int, players: List[InetSocketAddress]): Receive = {
-
-    case Tcp.Connected(playerAddress, _) =>  if (numberOfPlayers == 0) {
-      judge ! Start(players)
-
+    case StartGameSession         => {
+      judge ! GetReady(endpoint)
       context.become(waitingGameOver)
-    } else {
-      log.debug(s"New player has connected. We need $numberOfPlayers more player")
-
-      sender() ! Tcp.Register(judge)
-
-      judge ! Add(playerAddress)
-
-      waitingForPlayers(numberOfPlayers - 1, players :+ playerAddress)
     }
   }
 
@@ -59,22 +39,83 @@ object Commander {
 }
 
 
-class Judge extends Actor with ActorLogging {
+class Judge(commander: ActorRef) extends Actor with ActorLogging {
 
-  val players = ListBuffer.empty[InetSocketAddress]
+  val players = ListBuffer.empty[ActorRef]
 
   override def receive: Receive = {
+    case GetReady(endpoint) => IO(Tcp)(context.system) ! Tcp.Bind(self, endpoint)
 
-    case Add(player)  => players.append(player)
-
-    case Tcp.Received(data) => data.utf8String.trim match {
-      case "ready"  =>  sender() ! Tcp.Write(ByteString(s"You are player number ${players.length}"))
+    case Tcp.Bound(localAddress) => {
+      log.debug(s"judge running on $localAddress")
+      log.debug("waiting for players")
+      
+      context.become(waitingForPlayers(4, List.empty))
     }
+
+  }
+
+  def playing: Receive = {
+    case Start      =>  log.debug("starting game")
+  }
+
+  def waitingForPlayers(numberOfPlayers: Int, players: List[InetSocketAddress]): Receive = {
+
+    case Tcp.Connected(playerAddress, _) =>  {
+      log.debug(s"New player has connected.")
+
+      if (numberOfPlayers == 0) {
+        context.become(playing)
+        self ! Start
+
+      } else {
+
+        log.debug(s"We need ${numberOfPlayers - 1} more players.")
+
+        self ! Add(playerAddress, sender())
+
+        context.become(waitingForPlayers(numberOfPlayers - 1, players :+ playerAddress))
+      }
+    }
+
+    case Add(address, conn)  => {
+      val playerHandler = context.actorOf(PlayerHandler.props(players.length, address), name = players.length.toString)
+
+      conn ! Tcp.Register(playerHandler)
+
+      this.players.append(playerHandler)
+    }
+
+
   }
 }
 
 object Judge {
 
-  case class Start(players: List[InetSocketAddress])
-  case class Add(player: InetSocketAddress)
+  def props(commander: ActorRef): Props = Props(new Judge(commander))
+
+  case object Start
+  case class Add(player: InetSocketAddress, connection: ActorRef)
+  case class GetReady(endpoint: InetSocketAddress)
 }
+
+class PlayerHandler(id: Int, address: InetSocketAddress) extends Actor with ActorLogging {
+  override def receive: Receive = {
+    case Tcp.Received(data) => data.utf8String.trim match {
+      case "ready"  =>  sender() ! Tcp.Write(ByteString(s"You are player number ${id}"))
+      case x        =>  {
+        log.debug(x)
+        sender() ! Tcp.Write(ByteString("invalid input"))
+      }
+    }
+
+    case x  => log.debug(x.toString)
+  }
+}
+
+object PlayerHandler {
+
+  def props(id: Int, address: InetSocketAddress): Props = Props(new PlayerHandler(id, address))
+
+}
+
