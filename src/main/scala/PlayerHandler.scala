@@ -15,19 +15,13 @@ import cats.Show.ops._
 class PlayerHandler(id: Int, address: InetSocketAddress, judge: ActorRef) extends Actor with ActorLogging {
   override def receive: Receive = {
     case Tcp.Received(data) => toCommand(data.utf8String.trim) match {
-
       case Right(Ready) =>  sender() ! Tcp.Write(ByteString(s"You are player number ${id}\n"))
-
       case Left(error)  =>  {
         log.debug(error.show)
         sender() ! Tcp.Write(ByteString(error.show))
       }
     }
-
-    case Tcp.PeerClosed =>  {
-      judge ! Disconnected(id, address)
-    }
-
+    case Tcp.PeerClosed => judge ! Disconnected(id, address)
     case Tcp.ErrorClosed(cause) => {
       log.debug(cause)
 

@@ -17,5 +17,4 @@ object PlayerCommand {
   implicit def toShowable: Show[PlayerCommand] = Show.show[PlayerCommand] {
     case Ready  =>  "ready"
   }
-
 }

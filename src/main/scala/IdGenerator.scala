@@ -1,9 +1,10 @@
-import IdGenerator.{Id, Remove}
-import akka.actor.{Actor, ActorLogging}
-
 /**
   * Created by anicolaspp on 2/3/17.
   */
+
+import IdGenerator.{EmptyId, Id, NextId, Remove}
+import akka.actor.{Actor, ActorLogging}
+
 class IdGenerator extends Actor with ActorLogging {
 
   val ids = scala.collection.mutable.Map[Int, Boolean](
@@ -27,9 +28,7 @@ class IdGenerator extends Actor with ActorLogging {
     }
 
     case Remove(id) =>  {
-      ids.find { case (i, _) => i == id } match {
-        case Some(value) => ids(value._1) = true
-      }
+      ids.find { case (i, _) => i == id } foreach { value => ids(value._1) = true }
 
       ids.foreach {case (key, value) => log.debug(s"$key: $value")}
     }
