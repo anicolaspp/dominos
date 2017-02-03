@@ -23,15 +23,9 @@ class IdGenerator extends Actor with ActorLogging {
         }
         case None =>  sender() ! EmptyId
       }
-
-      ids.foreach {case (key, value) => log.debug(s"$key: $value")}
     }
 
-    case Remove(id) =>  {
-      ids.find { case (i, _) => i == id } foreach { value => ids(value._1) = true }
-
-      ids.foreach {case (key, value) => log.debug(s"$key: $value")}
-    }
+    case Remove(id) =>  ids.find { case (i, _) => i == id } foreach { value => ids(value._1) = true }
   }
 }
 

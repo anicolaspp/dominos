@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 
 import IdGenerator.{Id, NextId, Remove}
 import Judge._
+import Token.Token
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.{IO, Tcp}
 import akka.pattern.ask
@@ -13,6 +14,7 @@ import akka.util.Timeout
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration._
+import scala.util.Random
 
 class Judge(commander: ActorRef) extends Actor with ActorLogging {
 
@@ -37,21 +39,11 @@ class Judge(commander: ActorRef) extends Actor with ActorLogging {
 
   def waitingForPlayers(numberOfPlayers: Int, players: List[InetSocketAddress]): Receive = {
 
-    case Tcp.Connected(playerAddress, _) =>  {
+    case Tcp.Connected(playerAddress, _) => {
       log.debug(s"New player has connected.")
+      log.debug(s"We need ${numberOfPlayers - 1} more players.")
 
-      if (numberOfPlayers == 0) {
-        context.become(playing)
-        self ! Start
-
-      } else {
-
-        log.debug(s"We need ${numberOfPlayers - 1} more players.")
-
-        self ! Add(playerAddress, sender())
-
-        context.become(waitingForPlayers(numberOfPlayers - 1, players :+ playerAddress))
-      }
+      self ! Add(playerAddress, sender())
     }
 
     case Add(address, conn)  => {
@@ -63,6 +55,14 @@ class Judge(commander: ActorRef) extends Actor with ActorLogging {
 
           this.players.append((value, playerHandler))
           this.players.foreach(p => println(p._1))
+
+
+          if (numberOfPlayers == 1) {
+            context.become(playing)
+            self ! Start
+          } else {
+            context.become(waitingForPlayers(numberOfPlayers - 1, players :+ address))
+          }
         }
       }
     }
@@ -83,7 +83,15 @@ class Judge(commander: ActorRef) extends Actor with ActorLogging {
   }
 
   def playing: Receive = {
-    case Start      =>  log.debug("starting game")
+    case Start      =>  {
+      log.debug("starting game")
+
+      val selection = new TokenSelector(Deck.tokens).select
+      println(selection._1)
+      println(selection._2)
+      println(selection._3)
+      println(selection._4)
+    }
     case Disconnected(playerId, address)  =>  {
       log.debug(s"Player $playerId running at $address has disconnected...")
     }
@@ -102,3 +110,36 @@ object Judge {
 
   case object IncompleteGame
 }
+
+
+
+class TokenSelector(val tokens: List[Token]) {
+  def select: (List[Token], List[Token], List[Token], List[Token]) = {
+
+    def selectTen(selected: Int, xs: List[Token], left: List[Token]): (List[Token], List[Token]) = {
+      if (selected == 10) {
+        (xs, left)
+      } else {
+
+        val index = Random.nextInt(left.length)
+        val one = left(index)
+
+        selectTen(selected + 1, one :: xs, left.filterNot(_ == one))
+      }
+    }
+
+    val (p1, l1) = selectTen(0, List.empty, tokens)
+    val (p2, l2) = selectTen(0, List.empty, l1)
+    val (p3, l3) = selectTen(0, List.empty, l2)
+    val (p4, l4) = selectTen(0, List.empty, l3)
+
+    assert(p1.toSet.union(p2.toSet.union(p3.toSet.union(p4.toSet))).toList.length == 40)
+
+    (p1, p2, p3, p4)
+  }
+}
+
+
+
+
+
